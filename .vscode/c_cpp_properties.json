@@ -1,0 +1,41 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/mbsaloka/ichiro-ws/install/basho/include/**",
+        "/home/mbsaloka/ichiro-ws/install/aruku/include/**",
+        "/home/mbsaloka/ichiro-ws/install/kansei/include/**",
+        "/home/mbsaloka/ichiro-ws/install/akushon/include/**",
+        "/home/mbsaloka/ichiro-ws/install/tachimawari/include/**",
+        "/home/mbsaloka/ichiro-ws/install/tachimawari_interfaces/include/**",
+        "/home/mbsaloka/ichiro-ws/install/suiryoku_interfaces/include/**",
+        "/home/mbsaloka/ichiro-ws/install/soccer_interfaces/include/**",
+        "/home/mbsaloka/ichiro-ws/install/shisen_cpp/include/**",
+        "/home/mbsaloka/ichiro-ws/install/shisen_interfaces/include/**",
+        "/home/mbsaloka/ichiro-ws/install/ninshiki_interfaces/include/**",
+        "/home/mbsaloka/ichiro-ws/install/jitsuyo/include/**",
+        "/home/mbsaloka/ichiro-ws/install/keisan/include/**",
+        "/home/mbsaloka/ichiro-ws/install/kansei_interfaces/include/**",
+        "/home/mbsaloka/ichiro-ws/install/gyakuenki_interfaces/include/**",
+        "/home/mbsaloka/ichiro-ws/install/competition_interfaces/include/**",
+        "/home/mbsaloka/ichiro-ws/install/biped_interfaces/include/**",
+        "/home/mbsaloka/ichiro-ws/install/basho_interfaces/include/**",
+        "/home/mbsaloka/ichiro-ws/install/atama_interfaces/include/**",
+        "/home/mbsaloka/ichiro-ws/install/aruku_interfaces/include/**",
+        "/home/mbsaloka/ichiro-ws/install/akushon_interfaces/include/**",
+        "/opt/ros/jazzy/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}
