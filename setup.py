@@ -1,11 +1,11 @@
 from setuptools import find_packages, setup
 
-package_name = 'soccer_sim'
+package_name = 'soccer_mcl_sim'
 
 setup(
     name=package_name,
     version='0.0.0',
-    packages=['soccer_sim'],
+    packages=['soccer_mcl_sim'],
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'soccer_sim = soccer_sim.sim:main',
+            'main = soccer_mcl_sim.sim:main',
         ],
     },
 )

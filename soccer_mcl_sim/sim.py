@@ -19,7 +19,7 @@ from basho_interfaces.msg import Particles
 
 class SoccerSim(Node):
     def __init__(self):
-        super().__init__("soccer_sim")
+        super().__init__("soccer_mcl_sim")
         pygame.init()
 
         self.scale = 1.0
