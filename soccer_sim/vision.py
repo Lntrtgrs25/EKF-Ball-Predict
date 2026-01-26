@@ -7,11 +7,13 @@ import pygame
 class VisionSensor:
     def __init__(
         self,
-        fov_deg=120.0,
-        max_range=800.0,
+        fov_deg=78.0,
+        max_range=350.0,
         n_rays=61,
-        range_noise_std=5.0,
-        bearing_noise_std_deg=1.5,
+        range_noise_std=3.0,
+        bearing_noise_std_deg=1.0,
+        range_noise_gain=0.02,
+        bearing_noise_gain_deg=0.01,
     ):
         self.fov = math.radians(fov_deg)
         self.max_range = max_range
@@ -20,18 +22,21 @@ class VisionSensor:
         self.range_noise_std = range_noise_std
         self.bearing_noise_std = math.radians(bearing_noise_std_deg)
 
+        self.range_noise_gain = range_noise_gain
+        self.bearing_noise_gain = math.radians(bearing_noise_gain_deg)
+
     def sense(self, robot, field, enable_noise=True):
         observations = []
 
         all_landmarks = []
         for p in field.landmarks_L:
-            all_landmarks.append(("L", p))
+            all_landmarks.append(("L-Intersection", p))
         for p in field.landmarks_T:
-            all_landmarks.append(("T", p))
+            all_landmarks.append(("T-Intersection", p))
         for p in field.landmarks_X:
-            all_landmarks.append(("X", p))
+            all_landmarks.append(("X-Intersection", p))
         for p in field.landmarks_goalpost:
-            all_landmarks.append(("G", p))
+            all_landmarks.append(("goalpost", p))
 
         for lm_type, (lx, ly) in all_landmarks:
             dx = lx - robot.x
@@ -48,8 +53,11 @@ class VisionSensor:
                 continue
 
             if enable_noise:
-                noisy_range = true_range + random.gauss(0.0, self.range_noise_std)
-                noisy_bearing = bearing + random.gauss(0.0, self.bearing_noise_std)
+                sigma_r = self.range_noise_std + self.range_noise_gain * true_range
+                sigma_b = self.bearing_noise_std + self.bearing_noise_gain * true_range
+
+                noisy_range = true_range + random.gauss(0.0, sigma_r)
+                noisy_bearing = bearing + random.gauss(0.0, sigma_b)
             else:
                 noisy_range = true_range
                 noisy_bearing = bearing
@@ -114,16 +122,6 @@ class VisionSensor:
         cy = int(ry * scale)
 
         for obs in observations:
-            # ---- true landmark line ----
-            tx, ty = obs["true_pos"]
-            pygame.draw.line(
-                screen,
-                TRUE_LINE,
-                (cx, cy),
-                (int(tx * scale), int(ty * scale)),
-                1,
-            )
-
             # ---- noisy measurement position ----
             meas_x = rx + obs["range"] * math.cos(obs["bearing"] + rtheta)
             meas_y = ry + obs["range"] * math.sin(obs["bearing"] + rtheta)
@@ -158,6 +156,12 @@ class VisionSensor:
     def set_range(self, r):
         self.max_range = max(100.0, min(2000.0, r))
 
-    def set_noise(self, r_std, b_std_deg):
+    def set_noise(self, r_std, b_std_deg, r_gain=None, b_gain_deg=None):
         self.range_noise_std = max(0.0, r_std)
         self.bearing_noise_std = math.radians(max(0.0, b_std_deg))
+
+        if r_gain is not None:
+            self.range_noise_gain = max(0.0, r_gain)
+        if b_gain_deg is not None:
+            self.bearing_noise_gain = math.radians(max(0.0, b_gain_deg))
+

@@ -1,4 +1,5 @@
 # sim.py
+import random
 import rclpy
 from rclpy.node import Node
 import pygame
@@ -11,13 +12,18 @@ from .vision import VisionSensor
 from .ui import InputField, Button, Toggle
 
 
+from gyakuenki_interfaces.msg import ProjectedObjects, ProjectedObject
+from aruku_interfaces.msg import Point2
+from kansei_interfaces.msg import Status, Axis
+from basho_interfaces.msg import Particles
+
 class SoccerSim(Node):
     def __init__(self):
         super().__init__("soccer_sim")
         pygame.init()
 
         self.scale = 1.0
-        self.padding = 0   # padding lapangan
+        self.padding = 0
         self.field = Field()
         self.robot = Robot()
 
@@ -99,6 +105,37 @@ class SoccerSim(Node):
             self.panel_x, y, 160, 36, "KIDNAP", self._kidnap_cb
         )
 
+        # ----------- ROS2 Publishers -----------
+        self.pub_projected = self.create_publisher(
+            ProjectedObjects,
+            "/gyakuenki_cpp/projected_objects",
+            10
+        )
+
+        self.pub_delta = self.create_publisher(
+            Point2,
+            "walking/delta_position",
+            10
+        )
+
+        self.pub_imu = self.create_publisher(
+            Status,
+            "measurement/status",
+            10
+        )
+
+        # ----------- ROS2 Subscriber -----------
+        self.sub_particles = self.create_subscription(
+            Particles,
+            "localization/particles",
+            self._particles_cb,
+            10
+        )
+
+        self.particles_msg = None
+        self.prev_x = self.robot.x
+        self.prev_y = self.robot.y
+
     # ---------------- Callback ----------------
     def _kidnap_cb(self):
         x = self.kidnap_x_box.get_value()
@@ -108,6 +145,10 @@ class SoccerSim(Node):
 
         self.robot.kidnap(x, y, theta)
         print(f"[KIDNAP] Robot moved to ({x:.1f}, {y:.1f}, {theta_deg:.1f} deg)")
+
+    def _particles_cb(self, msg):
+        self.particles_msg = msg
+
 
     # ---------------- Main Loop ----------------
     def step(self):
@@ -150,6 +191,54 @@ class SoccerSim(Node):
 
         self.robot.update(dt)
 
+        ODO_ALPHA_DIST = 0.05
+        ODO_SIGMA_MIN = 0.5
+        IMU_SIGMA_DEG = 1.0
+
+        dx_true = self.robot.x - self.prev_x
+        dy_true = self.robot.y - self.prev_y
+
+        dist = math.hypot(dx_true, dy_true)
+
+        # noise std
+        sigma_d = ODO_ALPHA_DIST * abs(dist) + ODO_SIGMA_MIN
+
+        # noisy odometry
+        dx_noisy = dx_true + random.gauss(0, sigma_d)
+        dy_noisy = dy_true + random.gauss(0, sigma_d)
+
+        msg = Point2()
+        msg.x = dx_noisy
+        msg.y = dy_noisy
+        self.pub_delta.publish(msg)
+
+        if abs(msg.x) > 10.0 or abs(msg.y) > 10.0:
+            print("[DEBUG] Large odometry:", msg.x, msg.y)
+
+        self.prev_x = self.robot.x
+        self.prev_y = self.robot.y
+
+        # ---- IMU NOISE MODEL ----
+        yaw_deg_true = math.degrees(self.robot.theta)
+        yaw_noisy = (
+            yaw_deg_true +
+            random.gauss(0, IMU_SIGMA_DEG)
+        )
+
+        while yaw_noisy > 180:
+            yaw_noisy -= 360
+        while yaw_noisy < -180:
+            yaw_noisy += 360
+
+        imu = Status()
+        imu.is_calibrated = True
+        imu.orientation = Axis()
+        imu.orientation.roll = 0.0
+        imu.orientation.pitch = 0.0
+        imu.orientation.yaw = yaw_noisy
+
+        self.pub_imu.publish(imu)
+
         # ---------------- Drawing ----------------
         self.screen.fill((15, 20, 30))  # background
 
@@ -160,12 +249,37 @@ class SoccerSim(Node):
             offset_y=self.padding
         )
 
+        self.draw_particles()
+
         self.robot.draw(self.screen, self.scale)
 
         observations = self.vision.sense(
             self.robot, self.field,
             enable_noise=self.toggle_noise.value
         )
+
+        # ---- Publish projected objects ----
+        po_msg = ProjectedObjects()
+
+        for obs in observations:
+            o = ProjectedObject()
+
+            r = obs["range"]
+            b = obs["bearing"]
+
+            rel_x = r * math.cos(b)
+            rel_y = r * math.sin(b)
+
+            o.position.x = rel_x * 0.01
+            o.position.y = rel_y * -0.01
+            o.position.z = 0.0
+
+            o.confidence = 1.0
+            o.label = obs["type"]
+
+            po_msg.projected_objects.append(o)
+
+        self.pub_projected.publish(po_msg)
 
         self.vision.draw_fov(self.screen, self.robot, self.scale)
         if self.toggle_rays.value:
@@ -208,6 +322,40 @@ class SoccerSim(Node):
         pygame.display.flip()
         return True
 
+    def weight_to_alpha(self, w, k=6.0):
+        return 1.0 - math.exp(-k * w)
+
+
+    def draw_particles(self):
+        if self.particles_msg is None:
+            return
+
+        for p in self.particles_msg.particles:
+            x = int(p.x * self.scale)
+            y = int(p.y * self.scale)
+
+            alpha = self.weight_to_alpha(p.weight)
+            alpha = max(0.05, min(alpha, 1.0))
+
+            r = 3
+            s = pygame.Surface((r*2, r*2), pygame.SRCALPHA)
+            # color = (0, 100, 200, int(255 * alpha))
+            color = (0, 100, 200, int(255))
+            pygame.draw.circle(s, color, (r, r), r)
+            self.screen.blit(s, (x-r, y-r))
+
+        # estimated position
+        ep = self.particles_msg.estimated_position
+        x = int(ep.x * self.scale)
+        y = int(ep.y * self.scale)
+
+        pygame.draw.circle(
+            self.screen,
+            (0, 0, 255),
+            (x, y),
+            8,
+            2
+        )
 
 def main():
     rclpy.init()
