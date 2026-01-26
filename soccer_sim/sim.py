@@ -29,10 +29,12 @@ class SoccerSim(Node):
 
         self.vision = VisionSensor(
             fov_deg=78.0,
-            max_range=300.0,
+            max_range=450.0,
             n_rays=61,
-            range_noise_std=9.0,
-            bearing_noise_std_deg=3.5,
+            range_noise_std=3.0,
+            bearing_noise_std_deg=1.0,
+            range_noise_gain=0.02,
+            bearing_noise_gain_deg=0.01
         )
 
         PANEL_W = 220
@@ -81,6 +83,12 @@ class SoccerSim(Node):
         y += 30
         self.toggle_noise = Toggle(self.panel_x, y, "Enable noise", True)
         y += 50
+
+        # ---- Interactive kidnap state ----
+        self.kidnap_pos = None      # (x, y)
+        self.kidnap_theta = 0.0
+        self.is_dragging = False
+        self.just_kidnapped = False
 
         # ---------- Kidnap Inputs (X, Y, Theta) ----------
         self.kidnap_x_box = InputField(
@@ -138,12 +146,19 @@ class SoccerSim(Node):
 
     # ---------------- Callback ----------------
     def _kidnap_cb(self):
+        if self.kidnap_pos is None:
+            return
+
         x = self.kidnap_x_box.get_value()
         y = self.kidnap_y_box.get_value()
         theta_deg = self.kidnap_theta_box.get_value()
         theta = math.radians(theta_deg)
 
         self.robot.kidnap(x, y, theta)
+        self.prev_x = x
+        self.prev_y = y
+        self.just_kidnapped = True
+
         print(f"[KIDNAP] Robot moved to ({x:.1f}, {y:.1f}, {theta_deg:.1f} deg)")
 
     def _particles_cb(self, msg):
@@ -170,6 +185,33 @@ class SoccerSim(Node):
             self.kidnap_theta_box.handle_event(event)
             self.kidnap_button.handle_event(event)
 
+            # -------- Mouse kidnap --------
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                mx, my = event.pos
+
+                if mx < self.field.length * self.scale:
+                    self.kidnap_pos = (mx / self.scale, my / self.scale)
+                    self.is_dragging = True
+
+            if event.type == pygame.MOUSEBUTTONUP:
+                self.is_dragging = False
+
+            if event.type == pygame.MOUSEMOTION and self.is_dragging:
+                if self.kidnap_pos is not None:
+                    mx, my = event.pos
+                    x0, y0 = self.kidnap_pos
+
+                    dx = (mx / self.scale) - x0
+                    dy = (my / self.scale) - y0
+
+                    self.kidnap_theta = math.atan2(dy, dx)
+                    self.kidnap_x_box.set_value(x0)
+                    self.kidnap_y_box.set_value(y0)
+                    self.kidnap_theta_box.set_value(
+                        math.degrees(self.kidnap_theta)
+                    )
+
+
         # keyboard control
         keys = pygame.key.get_pressed()
         self.robot.vx = 0.0
@@ -195,8 +237,13 @@ class SoccerSim(Node):
         ODO_SIGMA_MIN = 0.5
         IMU_SIGMA_DEG = 1.0
 
-        dx_true = self.robot.x - self.prev_x
-        dy_true = self.robot.y - self.prev_y
+        if self.just_kidnapped:
+            dx_true = 0.0
+            dy_true = 0.0
+            self.just_kidnapped = False
+        else:
+            dx_true = self.robot.x - self.prev_x
+            dy_true = self.robot.y - self.prev_y
 
         dist = math.hypot(dx_true, dy_true)
 
@@ -252,6 +299,22 @@ class SoccerSim(Node):
         self.draw_particles()
 
         self.robot.draw(self.screen, self.scale)
+
+        # ---- Draw kidnap preview ----
+        if self.kidnap_pos is not None:
+            x, y = self.kidnap_pos
+            px = int(x * self.scale)
+            py = int(y * self.scale)
+
+            pygame.draw.circle(self.screen, (255, 200, 0), (px, py), 6)
+
+            L = 40
+            ex = px + int(L * math.cos(self.kidnap_theta))
+            ey = py + int(L * math.sin(self.kidnap_theta))
+            pygame.draw.line(
+                self.screen, (255, 200, 0),
+                (px, py), (ex, ey), 3
+            )
 
         observations = self.vision.sense(
             self.robot, self.field,

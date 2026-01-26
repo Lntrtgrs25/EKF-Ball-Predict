@@ -18,6 +18,11 @@ class InputField:
         except:
             return 0.0
 
+    def set_value(self, v):
+        v = max(self.min_val, min(self.max_val, v))
+        self.value = v
+        self.text = f"{v:.1f}"
+
     def draw(self, screen, font):
         color = (255, 255, 255) if self.active else (220, 220, 220)
         pygame.draw.rect(screen, color, self.rect, border_radius=6)
