@@ -131,13 +131,18 @@ class SoccerSim(Node):
 
         # keyboard control
         keys = pygame.key.get_pressed()
-        self.robot.v = 0.0
+        self.robot.vx = 0.0
+        self.robot.vy = 0.0
         self.robot.omega = 0.0
 
         if keys[pygame.K_w]:
-            self.robot.v = 200.0
+            self.robot.vx = 100.0
         if keys[pygame.K_s]:
-            self.robot.v = -200.0
+            self.robot.vx = -100.0
+        if keys[pygame.K_l]:
+            self.robot.vy = 100.0
+        if keys[pygame.K_j]:
+            self.robot.vy = -100.0
         if keys[pygame.K_d]:
             self.robot.omega = 2.0
         if keys[pygame.K_a]:

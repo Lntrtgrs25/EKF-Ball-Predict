@@ -8,12 +8,16 @@ class Robot:
         self.y = 300.0
         self.theta = 0.0  # rad
 
-        self.v = 0.0
+        self.vx = 0.0
+        self.vy = 0.0
         self.omega = 0.0
 
     def update(self, dt):
-        self.x += self.v * math.cos(self.theta) * dt
-        self.y += self.v * math.sin(self.theta) * dt
+        dx = self.vx * math.cos(self.theta) - self.vy * math.sin(self.theta)
+        dy = self.vx * math.sin(self.theta) + self.vy * math.cos(self.theta)
+
+        self.x += dx * dt
+        self.y += dy * dt
         self.theta += self.omega * dt
 
     def draw(self, screen, scale=1.0):
