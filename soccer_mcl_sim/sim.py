@@ -140,6 +140,20 @@ class SoccerSim(Node):
             10
         )
 
+        self.sub_odometry = self.create_subscription(
+            Point2,
+            "walking/set_odometry",
+            self._odometry_cb,
+            10
+        )
+
+        self.sub_imu = self.create_subscription(
+            Status,
+            "measurement/status",
+            self._imu_cb,
+            10
+        )
+
         self.particles_msg = None
         self.prev_x = self.robot.x
         self.prev_y = self.robot.y
@@ -164,6 +178,13 @@ class SoccerSim(Node):
     def _particles_cb(self, msg):
         self.particles_msg = msg
 
+    def _odometry_cb(self, msg):
+        self.robot.belief_x = msg.x
+        self.robot.belief_y = msg.y
+
+    def _imu_cb(self, msg):
+        yaw_deg = msg.orientation.yaw
+        self.robot.belief_theta = math.radians(yaw_deg)
 
     # ---------------- Main Loop ----------------
     def step(self):
@@ -299,6 +320,8 @@ class SoccerSim(Node):
         self.draw_particles()
 
         self.robot.draw(self.screen, self.scale)
+        self.draw_estimated_position()
+        self.robot.draw_belief(self.screen, self.scale)
 
         # ---- Draw kidnap preview ----
         if self.kidnap_pos is not None:
@@ -407,18 +430,24 @@ class SoccerSim(Node):
             pygame.draw.circle(s, color, (r, r), r)
             self.screen.blit(s, (x-r, y-r))
 
-        # estimated position
+
+    def draw_estimated_position(self):
+        if self.particles_msg is None:
+            return
+
         ep = self.particles_msg.estimated_position
         x = int(ep.x * self.scale)
         y = int(ep.y * self.scale)
+        theta = self.robot.belief_theta
 
-        pygame.draw.circle(
-            self.screen,
-            (0, 0, 255),
-            (x, y),
-            8,
-            2
-        )
+        R = 14
+
+        pygame.draw.circle(self.screen, (0, 200, 0), (x, y), R, 2)
+
+        hx = x + R * math.cos(theta)
+        hy = y + R * math.sin(theta)
+        pygame.draw.line(self.screen, (0, 200, 0), (x, y), (hx, hy), 2)
+
 
 def main():
     rclpy.init()

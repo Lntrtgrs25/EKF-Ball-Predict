@@ -8,6 +8,10 @@ class Robot:
         self.y = 300.0
         self.theta = 0.0  # rad
 
+        self.belief_x = self.x
+        self.belief_y = self.y
+        self.belief_theta = self.theta
+
         self.vx = 0.0
         self.vy = 0.0
         self.omega = 0.0
@@ -24,11 +28,26 @@ class Robot:
         px = int(self.x * scale)
         py = int(self.y * scale)
 
-        pygame.draw.circle(screen, (0, 0, 0), (px, py), 10)
+        R = 14
 
-        hx = px + 15 * math.cos(self.theta)
-        hy = py + 15 * math.sin(self.theta)
-        pygame.draw.line(screen, (255, 0, 0), (px, py), (hx, hy), 2)
+        pygame.draw.circle(screen, (0, 0, 0), (px, py), R, 2)
+
+        hx = px + R * math.cos(self.theta)
+        hy = py + R * math.sin(self.theta)
+        pygame.draw.line(screen, (0, 0, 0), (px, py), (hx, hy), 2)
+
+
+    def draw_belief(self, screen, scale=1.0):
+        px = int(self.belief_x * scale)
+        py = int(self.belief_y * scale)
+
+        R = 14
+
+        pygame.draw.circle(screen, (255, 200, 0), (px, py), R, 2)
+
+        hx = px + R * math.cos(self.belief_theta)
+        hy = py + R * math.sin(self.belief_theta)
+        pygame.draw.line(screen, (255, 200, 0), (px, py), (hx, hy), 2)
 
     def kidnap(self, x, y, theta=None):
         self.x = x
