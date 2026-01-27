@@ -3,7 +3,7 @@
 <package format="3">
   <name>soccer_mcl_sim</name>
   <version>0.0.0</version>
-  <description>Simulation of MCL for soccer using PyGame and ROS2.</description>
+  <description>Simulation of MCL for soccer using PyGame and ROS2</description>
   <maintainer email="mbsaloka@gmail.com">mbsaloka</maintainer>
   <license>MIT License</license>
 

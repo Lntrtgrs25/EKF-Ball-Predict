@@ -15,12 +15,13 @@ setup(
     zip_safe=True,
     maintainer='mbsaloka',
     maintainer_email='mbsaloka@gmail.com',
-    description='TODO: Package description',
-    license='TODO: License declaration',
+    description='Simulation of MCL for soccer using PyGame and ROS2',
+    license='MIT License',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'main = soccer_mcl_sim.sim:main',
+            'config = soccer_mcl_sim.config_gui:main',
         ],
     },
 )
