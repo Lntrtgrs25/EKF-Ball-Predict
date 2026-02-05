@@ -10,17 +10,18 @@ from .world import Field
 from .robot import Robot
 from .vision import VisionSensor
 from .ui import InputField, Button, Toggle
-
+from .ball import Ball   
 
 from gyakuenki_interfaces.msg import ProjectedObjects, ProjectedObject
 from aruku_interfaces.msg import Point2
 from kansei_interfaces.msg import Status, Axis
-from basho_interfaces.msg import Particles
+# from basho_interfaces.msg import Particles
 
 class SoccerSim(Node):
     def __init__(self):
         super().__init__("soccer_mcl_sim")
         pygame.init()
+        Node.__init__(self, "soccer_mcl_sim") 
 
         self.scale = 1.0
         self.padding = 0
@@ -37,6 +38,14 @@ class SoccerSim(Node):
             bearing_noise_gain_deg=0.01
         )
 
+        self.ball = Ball() 
+        self.pub_projected = self.create_publisher(  
+            ProjectedObjects,
+            "/gyakuenki_cpp/projected_objects",
+            10
+        )
+        self.last_time = time.time()  
+
         PANEL_W = 220
         self.screen = pygame.display.set_mode(
             (
@@ -49,6 +58,8 @@ class SoccerSim(Node):
 
         self.last_time = time.time()
         self.font = pygame.font.SysFont("monospace", 16)
+
+        # self.pub_tuning = self.create_publisher(Point2, "/ball/ekf_tuning", 10)
 
         # ---------------- UI Layout ----------------
         self.panel_x = int(self.field.length * self.scale) + self.padding + 10
@@ -83,6 +94,12 @@ class SoccerSim(Node):
         y += 30
         self.toggle_noise = Toggle(self.panel_x, y, "Enable noise", True)
         y += 50
+
+        # self.tuning_q_box = InputField(self.panel_x, y, 100, 28, "EKF Q", 0.001)
+        # y += 52
+        # self.tuning_r_box = InputField(self.panel_x, y, 100, 28, "EKF R", 0.1)
+        # y += 40
+        # self.apply_tuning_btn = Button(self.panel_x, y, 160, 32, "Apply Tuning", self._apply_tuning_cb)
 
         # ---- Interactive kidnap state ----
         self.kidnap_pos = None      # (x, y)
@@ -133,12 +150,12 @@ class SoccerSim(Node):
         )
 
         # ----------- ROS2 Subscriber -----------
-        self.sub_particles = self.create_subscription(
-            Particles,
-            "localization/particles",
-            self._particles_cb,
-            10
-        )
+        # self.sub_particles = self.create_subscription(
+        #     Particles,
+        #     "localization/particles",
+        #     self._particles_cb,
+        #     10
+        # )
 
         self.sub_odometry = self.create_subscription(
             Point2,
@@ -154,9 +171,17 @@ class SoccerSim(Node):
             10
         )
 
-        self.particles_msg = None
+        # self.particles_msg = None
         self.prev_x = self.robot.x
         self.prev_y = self.robot.y
+        self.ekf_ball_pos = None 
+
+        self.sub_ekf = self.create_subscription(
+            Point2,
+            "/ball/filtered_pos",
+            self._ekf_callback,
+            10
+        )
 
     # ---------------- Callback ----------------
     def _kidnap_cb(self):
@@ -175,8 +200,8 @@ class SoccerSim(Node):
 
         print(f"[KIDNAP] Robot moved to ({x:.1f}, {y:.1f}, {theta_deg:.1f} deg)")
 
-    def _particles_cb(self, msg):
-        self.particles_msg = msg
+    # def _particles_cb(self, msg):
+    #     self.particles_msg = msg
 
     def _odometry_cb(self, msg):
         self.robot.belief_x = msg.x
@@ -186,11 +211,22 @@ class SoccerSim(Node):
         yaw_deg = msg.orientation.yaw
         self.robot.belief_theta = math.radians(yaw_deg)
 
+    def _ekf_callback(self, msg):
+        self.ekf_ball_pos = (msg.x, msg.y)
+
+    # def _apply_tuning_cb(self):
+    #     msg = Point2()
+    #     msg.x = self.tuning_q_box.get_value() # Kita anggap ini Q
+    #     msg.y = self.tuning_r_box.get_value() # Kita anggap ini R
+    #     self.pub_tuning.publish(msg)
+    #     print(f"[TUNING] Q set to: {msg.x}, R set to: {msg.y}")
+
     # ---------------- Main Loop ----------------
     def step(self):
         now = time.time()
         dt = now - self.last_time
         self.last_time = now
+        self.ball.update(dt)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -213,6 +249,20 @@ class SoccerSim(Node):
                 if mx < self.field.length * self.scale:
                     self.kidnap_pos = (mx / self.scale, my / self.scale)
                     self.is_dragging = True
+
+                    if event.button == 1:
+                        self.ball.x = self.kidnap_pos[0]
+                        self.ball.y = self.kidnap_pos[1]
+                        self.ball.vx = 0.0
+                        self.ball.vy = 0.0
+
+                    elif event.button == 3:
+                        power = random.uniform(300, 600)
+                        target_y = random.uniform(0, self.field.width)
+                        self.ball.kick(
+                            self.kidnap_pos[0] + 100,  
+                            target_y,
+                            power)
 
             if event.type == pygame.MOUSEBUTTONUP:
                 self.is_dragging = False
@@ -317,11 +367,22 @@ class SoccerSim(Node):
             offset_y=self.padding
         )
 
-        self.draw_particles()
+        # self.draw_particles()
 
         self.robot.draw(self.screen, self.scale)
-        self.draw_estimated_position()
+        # self.draw_estimated_position()
         self.robot.draw_belief(self.screen, self.scale)
+
+        # ---- Draw Ball (Original) ----
+        self.ball.draw(self.screen, self.scale)
+
+        # ---- Draw Ball (EKF Result - Yellow Circle) ----
+        if self.ekf_ball_pos is not None:
+            ex = int(self.ekf_ball_pos[0] * self.scale)
+            ey = int(self.ekf_ball_pos[1] * self.scale)
+            
+            pygame.draw.circle(self.screen, (255, 255, 0), (ex, ey), 8, 2) # Lingkaran kuning
+            pygame.draw.circle(self.screen, (255, 255, 0), (ex, ey), 2)    # Titik tengah
 
         # ---- Draw kidnap preview ----
         if self.kidnap_pos is not None:
@@ -350,6 +411,23 @@ class SoccerSim(Node):
         for obs in observations:
             o = ProjectedObject()
 
+        # Tambah projected object buat bola
+        ball_po = ProjectedObject()
+        ball_po.position.x = self.ball.x * 0.01  
+        ball_po.position.y = self.ball.y * -0.01
+        ball_po.position.z = 0.0
+        ball_po.confidence = 1.0
+        ball_po.label = "ball"
+        po_msg.projected_objects.append(ball_po)
+
+        self.pub_projected.publish(po_msg)  
+
+        # ---- Publish projected objects ----
+        po_msg = ProjectedObjects()
+
+        for obs in observations:
+            o = ProjectedObject()
+
             r = obs["range"]
             b = obs["bearing"]
 
@@ -364,6 +442,14 @@ class SoccerSim(Node):
             o.label = obs["type"]
 
             po_msg.projected_objects.append(o)
+
+        ball_po = ProjectedObject()
+        noise_x = random.gauss(0, 5.0) 
+        noise_y = random.gauss(0, 5.0)
+        ball_po.position.x = (self.ball.x + noise_x) * 0.01 
+        ball_po.position.y = (self.ball.y + noise_y) * -0.01 
+        ball_po.label = "ball"
+        po_msg.projected_objects.append(ball_po)
 
         self.pub_projected.publish(po_msg)
 
@@ -412,41 +498,41 @@ class SoccerSim(Node):
         return 1.0 - math.exp(-k * w)
 
 
-    def draw_particles(self):
-        if self.particles_msg is None:
-            return
+    # def draw_particles(self):
+    #     if self.particles_msg is None:
+    #         return
 
-        for p in self.particles_msg.particles:
-            x = int(p.x * self.scale)
-            y = int(p.y * self.scale)
+    #     for p in self.particles_msg.particles:
+    #         x = int(p.x * self.scale)
+    #         y = int(p.y * self.scale)
 
-            alpha = self.weight_to_alpha(p.weight)
-            alpha = max(0.05, min(alpha, 1.0))
+    #         alpha = self.weight_to_alpha(p.weight)
+    #         alpha = max(0.05, min(alpha, 1.0))
 
-            r = 3
-            s = pygame.Surface((r*2, r*2), pygame.SRCALPHA)
-            # color = (0, 100, 200, int(255 * alpha))
-            color = (0, 100, 200, int(255))
-            pygame.draw.circle(s, color, (r, r), r)
-            self.screen.blit(s, (x-r, y-r))
+    #         r = 3
+    #         s = pygame.Surface((r*2, r*2), pygame.SRCALPHA)
+    #         # color = (0, 100, 200, int(255 * alpha))
+    #         color = (0, 100, 200, int(255))
+    #         pygame.draw.circle(s, color, (r, r), r)
+    #         self.screen.blit(s, (x-r, y-r))
 
 
-    def draw_estimated_position(self):
-        if self.particles_msg is None:
-            return
+    # def draw_estimated_position(self):
+    #     if self.particles_msg is None:
+    #         return
 
-        ep = self.particles_msg.estimated_position
-        x = int(ep.x * self.scale)
-        y = int(ep.y * self.scale)
-        theta = self.robot.belief_theta
+    #     ep = self.particles_msg.estimated_position
+    #     x = int(ep.x * self.scale)
+    #     y = int(ep.y * self.scale)
+    #     theta = self.robot.belief_theta
 
-        R = 14
+    #     R = 14
 
-        pygame.draw.circle(self.screen, (0, 200, 0), (x, y), R, 2)
+    #     pygame.draw.circle(self.screen, (0, 200, 0), (x, y), R, 2)
 
-        hx = x + R * math.cos(theta)
-        hy = y + R * math.sin(theta)
-        pygame.draw.line(self.screen, (0, 200, 0), (x, y), (hx, hy), 2)
+    #     hx = x + R * math.cos(theta)
+    #     hy = y + R * math.sin(theta)
+    #     pygame.draw.line(self.screen, (0, 200, 0), (x, y), (hx, hy), 2)
 
 
 def main():

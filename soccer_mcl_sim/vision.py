@@ -3,7 +3,6 @@ import math
 import random
 import pygame
 
-
 class VisionSensor:
     def __init__(
         self,

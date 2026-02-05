@@ -1,11 +1,11 @@
 from setuptools import find_packages, setup
 
-package_name = 'soccer_mcl_sim'
+package_name = 'EKF-Ball-Predict'
 
 setup(
     name=package_name,
     version='0.0.0',
-    packages=['soccer_mcl_sim'],
+    packages=['EKF-Ball-Predict'],
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),

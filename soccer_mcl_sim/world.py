@@ -143,39 +143,39 @@ class Field:
         # Landmarks
         # =============================
 
-        # L landmarks
-        for x, y in self.landmarks_L:
-            px = offset_x + int(x * scale)
-            py = offset_y + int(y * scale)
-            pygame.draw.circle(screen, RED, (px, py), MARK_SIZE)
-            pygame.draw.circle(screen, BLACK, (px, py), MARK_SIZE, 2)
+        # # L landmarks
+        # for x, y in self.landmarks_L:
+        #     px = offset_x + int(x * scale)
+        #     py = offset_y + int(y * scale)
+        #     pygame.draw.circle(screen, RED, (px, py), MARK_SIZE)
+        #     pygame.draw.circle(screen, BLACK, (px, py), MARK_SIZE, 2)
 
-        # T landmarks
-        for x, y in self.landmarks_T:
-            px = offset_x + int(x * scale)
-            py = offset_y + int(y * scale)
-            pygame.draw.rect(
-                screen,
-                BLUE,
-                pygame.Rect(px - 5, py - 5, 10, 10),
-            )
-            pygame.draw.rect(
-                screen,
-                BLACK,
-                pygame.Rect(px - 5, py - 5, 10, 10),
-                2,
-            )
+        # # T landmarks
+        # for x, y in self.landmarks_T:
+        #     px = offset_x + int(x * scale)
+        #     py = offset_y + int(y * scale)
+        #     pygame.draw.rect(
+        #         screen,
+        #         BLUE,
+        #         pygame.Rect(px - 5, py - 5, 10, 10),
+        #     )
+        #     pygame.draw.rect(
+        #         screen,
+        #         BLACK,
+        #         pygame.Rect(px - 5, py - 5, 10, 10),
+        #         2,
+        #     )
 
-        # X landmarks
-        for x, y in self.landmarks_X:
-            px = offset_x + int(x * scale)
-            py = offset_y + int(y * scale)
-            pygame.draw.line(
-                screen, YELLOW, (px - 6, py - 6), (px + 6, py + 6), 5
-            )
-            pygame.draw.line(
-                screen, YELLOW, (px - 6, py + 6), (px + 6, py - 6), 5
-            )
+        # # X landmarks
+        # for x, y in self.landmarks_X:
+        #     px = offset_x + int(x * scale)
+        #     py = offset_y + int(y * scale)
+        #     pygame.draw.line(
+        #         screen, YELLOW, (px - 6, py - 6), (px + 6, py + 6), 5
+        #     )
+        #     pygame.draw.line(
+        #         screen, YELLOW, (px - 6, py + 6), (px + 6, py - 6), 5
+        #     )
 
         # Goalposts
         for x, y in self.landmarks_goalpost:

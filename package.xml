@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>soccer_mcl_sim</name>
+  <name>EKF-Ball-Predict</name>
   <version>0.0.0</version>
   <description>Simulation of MCL for soccer using PyGame and ROS2</description>
   <maintainer email="mbsaloka@gmail.com">mbsaloka</maintainer>
@@ -11,6 +11,8 @@
   <depend>geometry_msgs</depend>
   <depend>std_msgs</depend>
   <depend>vision_msgs</depend>
+  <depend>rclcpp</depend>
+  <depend>keisan</depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
