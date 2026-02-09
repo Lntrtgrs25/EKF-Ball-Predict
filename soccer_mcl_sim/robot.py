@@ -4,7 +4,7 @@ import pygame
 
 class Robot:
     def __init__(self):
-        self.x = 450.0
+        self.x = 0.0      # klo tengah gawang = 450
         self.y = 300.0
         self.theta = 0.0  # rad
 

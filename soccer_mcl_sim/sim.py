@@ -21,7 +21,6 @@ class SoccerSim(Node):
     def __init__(self):
         super().__init__("soccer_mcl_sim")
         pygame.init()
-        Node.__init__(self, "soccer_mcl_sim") 
 
         self.scale = 1.0
         self.padding = 0
@@ -88,18 +87,14 @@ class SoccerSim(Node):
         add_button("Noise -", lambda: self.vision.set_noise(
             self.vision.range_noise_std - 1,
             math.degrees(self.vision.bearing_noise_std) - 0.5))
+        #Kasih button buat tuning Q sama R
+        # add_button("Q +", lambda: self.vision)
 
         y += 10
         self.toggle_rays = Toggle(self.panel_x, y, "Show rays", True)
         y += 30
         self.toggle_noise = Toggle(self.panel_x, y, "Enable noise", True)
         y += 50
-
-        # self.tuning_q_box = InputField(self.panel_x, y, 100, 28, "EKF Q", 0.001)
-        # y += 52
-        # self.tuning_r_box = InputField(self.panel_x, y, 100, 28, "EKF R", 0.1)
-        # y += 40
-        # self.apply_tuning_btn = Button(self.panel_x, y, 160, 32, "Apply Tuning", self._apply_tuning_cb)
 
         # ---- Interactive kidnap state ----
         self.kidnap_pos = None      # (x, y)
@@ -171,17 +166,17 @@ class SoccerSim(Node):
             10
         )
 
-        # self.particles_msg = None
-        self.prev_x = self.robot.x
-        self.prev_y = self.robot.y
-        self.ekf_ball_pos = None 
-
         self.sub_ekf = self.create_subscription(
             Point2,
             "/ball/filtered_pos",
             self._ekf_callback,
             10
         )
+
+        # self.particles_msg = None
+        self.prev_x = self.robot.x
+        self.prev_y = self.robot.y
+        self.ekf_ball_pos = None 
 
     # ---------------- Callback ----------------
     def _kidnap_cb(self):
@@ -228,6 +223,10 @@ class SoccerSim(Node):
         self.last_time = now
         self.ball.update(dt)
 
+        mouse_pos = pygame.mouse.get_pos()          #for mouse koordinat
+        mx = mouse_pos[0] / self.scale
+        my = mouse_pos[1] / self.scale
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
@@ -241,35 +240,36 @@ class SoccerSim(Node):
             self.kidnap_y_box.handle_event(event)
             self.kidnap_theta_box.handle_event(event)
             self.kidnap_button.handle_event(event)
+            #kalo mau tambah tuning q r disini
 
             # -------- Mouse kidnap --------
             if event.type == pygame.MOUSEBUTTONDOWN:
-                mx, my = event.pos
+                # mx, my = event.pos
+                dist_to_ball = math.hypot(mx - self.ball.x, my - self.ball.y)
 
-                if mx < self.field.length * self.scale:
-                    self.kidnap_pos = (mx / self.scale, my / self.scale)
-                    self.is_dragging = True
+                # if mx < self.field.length * self.scale:
+                #     self.kidnap_pos = (mx / self.scale, my / self.scale)
+                #     self.is_dragging = True
 
-                    if event.button == 1:
-                        self.ball.x = self.kidnap_pos[0]
-                        self.ball.y = self.kidnap_pos[1]
-                        self.ball.vx = 0.0
-                        self.ball.vy = 0.0
-
-                    elif event.button == 3:
-                        power = random.uniform(300, 600)
-                        target_y = random.uniform(0, self.field.width)
-                        self.ball.kick(
-                            self.kidnap_pos[0] + 100,  
-                            target_y,
-                            power)
+                if event.button == 1:
+                    if dist_to_ball < 20:
+                        self.ball.is_dragging = True
+                    else:
+                        self.kidnap_pos = (mx, my)
+                        self.is_dragging = True
+    
+                elif event.button == 3:
+                        self.ball.kick(1300.0)
 
             if event.type == pygame.MOUSEBUTTONUP:
-                self.is_dragging = False
+                self.ball.is_dragging = False
+                # self.is_dragging = False
 
-            if event.type == pygame.MOUSEMOTION and self.is_dragging:
-                if self.kidnap_pos is not None:
-                    mx, my = event.pos
+            if event.type == pygame.MOUSEMOTION:
+                if self.ball.is_dragging:
+                    self.ball.x = mx
+                    self.ball.y = my
+                elif self.is_dragging and self.kidnap_pos is not None:
                     x0, y0 = self.kidnap_pos
 
                     dx = (mx / self.scale) - x0
@@ -281,22 +281,65 @@ class SoccerSim(Node):
                     self.kidnap_theta_box.set_value(
                         math.degrees(self.kidnap_theta)
                     )
+                else:
+                    dist_to_ball = math.hypot(mx - self.ball.x, my - self.ball.y)
+                    if dist_to_ball < 100:
+                        self.ball.theta = math.atan2(my - self.ball.y, mx - self.ball.x)  # Optional: remove if not needed for ball behavior
 
+        # ---- Autonomous Robot Behavior (Facing Ball and Interception) ----
+        # Calculate distance and angle to ball
+        dx = self.ball.x - self.robot.x
+        dy = self.ball.y - self.robot.y
+        dist_robot_ball = math.hypot(dx, dy)
+        angle_to_ball = math.atan2(dy, dx)
+        
+        # Check if ball is in FOV and range
+        rel_angle = (angle_to_ball - self.robot.theta + math.pi) % (2 * math.pi) - math.pi
+        if dist_robot_ball < self.vision.max_range and abs(rel_angle) < (self.vision.fov / 2):
+            # Robot automatically faces the ball
+            self.robot.theta = angle_to_ball
 
-        # keyboard control
+        # # Prediction Raycasting (Anticipate Goal)
+        # # Use EKF position if available
+        # bx = self.ekf_ball_pos[0] if self.ekf_ball_pos else self.ball.x
+        # by = self.ekf_ball_pos[1] if self.ekf_ball_pos else self.ball.y
+        
+        # if self.ball.vx < -10:  # If ball is moving toward left goal (x=0)
+        #     x_gawang = 50.0 
+        #     # Raycasting: predict impact y using ball's movement direction
+        #     ball_move_dir = math.atan2(self.ball.vy, self.ball.vx)
+        #     y_impact = by + (x_gawang - bx) * math.tan(ball_move_dir)
+            
+        #     # Draw prediction line (Cyan)
+        #     pygame.draw.line(self.screen, (0, 255, 255), (bx, by), (x_gawang, y_impact), 1)
+
+        #     # If predicted to enter goal area (y=200-400) and close enough, intercept
+        #     if 200 < y_impact < 400 and (bx - x_gawang) < 250:
+        #         if self.robot.y < y_impact - 5:
+        #             self.robot.vy = 120.0
+        #         elif self.robot.y > y_impact + 5:
+        #             self.robot.vy = -120.0
+        #         else:
+        #             self.robot.vy = 0.0
+        #     else:
+        #         self.robot.vy = 0.0  # Stop if safe
+        # else:
+        #     self.robot.vy = 0.0
+
+        # Keyboard control
         keys = pygame.key.get_pressed()
         self.robot.vx = 0.0
         self.robot.vy = 0.0
         self.robot.omega = 0.0
 
-        if keys[pygame.K_w]:
-            self.robot.vx = 100.0
-        if keys[pygame.K_s]:
-            self.robot.vx = -100.0
-        if keys[pygame.K_l]:
-            self.robot.vy = 100.0
-        if keys[pygame.K_j]:
-            self.robot.vy = -100.0
+        # if keys[pygame.K_w]:
+        #     self.robot.vx = 100.0
+        # if keys[pygame.K_s]:
+        #     self.robot.vx = -100.0
+        # if keys[pygame.K_l]:
+        #     self.robot.vy = 100.0
+        # if keys[pygame.K_j]:
+        #     self.robot.vy = -100.0
         if keys[pygame.K_d]:
             self.robot.omega = 2.0
         if keys[pygame.K_a]:
@@ -318,10 +361,10 @@ class SoccerSim(Node):
 
         dist = math.hypot(dx_true, dy_true)
 
-        # noise std
+        # Noise std
         sigma_d = ODO_ALPHA_DIST * abs(dist) + ODO_SIGMA_MIN
 
-        # noisy odometry
+        # Noisy odometry
         dx_noisy = dx_true + random.gauss(0, sigma_d)
         dy_noisy = dy_true + random.gauss(0, sigma_d)
 
@@ -411,23 +454,6 @@ class SoccerSim(Node):
         for obs in observations:
             o = ProjectedObject()
 
-        # Tambah projected object buat bola
-        ball_po = ProjectedObject()
-        ball_po.position.x = self.ball.x * 0.01  
-        ball_po.position.y = self.ball.y * -0.01
-        ball_po.position.z = 0.0
-        ball_po.confidence = 1.0
-        ball_po.label = "ball"
-        po_msg.projected_objects.append(ball_po)
-
-        self.pub_projected.publish(po_msg)  
-
-        # ---- Publish projected objects ----
-        po_msg = ProjectedObjects()
-
-        for obs in observations:
-            o = ProjectedObject()
-
             r = obs["range"]
             b = obs["bearing"]
 
@@ -472,7 +498,6 @@ class SoccerSim(Node):
 
         self.toggle_rays.draw(self.screen, self.font)
         self.toggle_noise.draw(self.screen, self.font)
-
         self.kidnap_x_box.draw(self.screen, self.font)
         self.kidnap_y_box.draw(self.screen, self.font)
         self.kidnap_theta_box.draw(self.screen, self.font)
@@ -497,7 +522,6 @@ class SoccerSim(Node):
     def weight_to_alpha(self, w, k=6.0):
         return 1.0 - math.exp(-k * w)
 
-
     # def draw_particles(self):
     #     if self.particles_msg is None:
     #         return
@@ -516,7 +540,6 @@ class SoccerSim(Node):
     #         pygame.draw.circle(s, color, (r, r), r)
     #         self.screen.blit(s, (x-r, y-r))
 
-
     # def draw_estimated_position(self):
     #     if self.particles_msg is None:
     #         return
@@ -533,7 +556,6 @@ class SoccerSim(Node):
     #     hx = x + R * math.cos(theta)
     #     hy = y + R * math.sin(theta)
     #     pygame.draw.line(self.screen, (0, 200, 0), (x, y), (hx, hy), 2)
-
 
 def main():
     rclpy.init()
