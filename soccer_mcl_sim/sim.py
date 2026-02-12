@@ -105,19 +105,19 @@ class SoccerSim(Node):
         # ---------- Kidnap Inputs (X, Y, Theta) ----------
         self.kidnap_x_box = InputField(
             self.panel_x, y, 100, 28,
-            "X", self.robot.x, 0, self.field.length
+            "X robot", self.robot.x, 0, self.field.length
         )
         y += 52
 
         self.kidnap_y_box = InputField(
             self.panel_x, y, 100, 28,
-            "Y", self.robot.y, 0, self.field.width
+            "Y robot", self.robot.y, 0, self.field.width
         )
         y += 52
 
         self.kidnap_theta_box = InputField(
             self.panel_x, y, 100, 28,
-            "Theta (deg)", 0, -180, 180
+            "Theta robot(deg)", 0, -180, 180
         )
         y += 40
 
@@ -275,15 +275,24 @@ class SoccerSim(Node):
                     dx = (mx / self.scale) - x0
                     dy = (my / self.scale) - y0
 
-                    self.kidnap_theta = math.atan2(dy, dx)
-                    self.kidnap_x_box.set_value(x0)
-                    self.kidnap_y_box.set_value(y0)
-                    self.kidnap_theta_box.set_value(
-                        math.degrees(self.kidnap_theta)
-                    )
+                    distance = math.hypot(dx, dy)
+                    radius_kidnap = 80.0
+
+                    if distance < radius_kidnap:
+                        self.kidnap_theta = math.atan2(dy, dx)
+                        self.kidnap_x_box.set_value(x0)
+                        self.kidnap_y_box.set_value(y0)
+                        self.kidnap_theta_box.set_value(
+                            math.degrees(self.kidnap_theta)
+                        )
+                    else:
+                        dist_to_ball = math.hypot(mx - self.ball.x, my - self.ball.y)
+                        if dist_to_ball < 80:
+                            self.ball.theta = math.atan2(my - self.ball.y, mx - self.ball.x)  # Optional: remove if not needed for ball behavior
+
                 else:
                     dist_to_ball = math.hypot(mx - self.ball.x, my - self.ball.y)
-                    if dist_to_ball < 100:
+                    if dist_to_ball < 200:
                         self.ball.theta = math.atan2(my - self.ball.y, mx - self.ball.x)  # Optional: remove if not needed for ball behavior
 
         # ---- Autonomous Robot Behavior (Facing Ball and Interception) ----
@@ -299,32 +308,32 @@ class SoccerSim(Node):
             # Robot automatically faces the ball
             self.robot.theta = angle_to_ball
 
-        # # Prediction Raycasting (Anticipate Goal)
-        # # Use EKF position if available
-        # bx = self.ekf_ball_pos[0] if self.ekf_ball_pos else self.ball.x
-        # by = self.ekf_ball_pos[1] if self.ekf_ball_pos else self.ball.y
+        # Prediction Raycasting (Anticipate Goal)
+        # Use EKF position if available
+        bx = self.ekf_ball_pos[0] if self.ekf_ball_pos else self.ball.x
+        by = self.ekf_ball_pos[1] if self.ekf_ball_pos else self.ball.y
         
-        # if self.ball.vx < -10:  # If ball is moving toward left goal (x=0)
-        #     x_gawang = 50.0 
-        #     # Raycasting: predict impact y using ball's movement direction
-        #     ball_move_dir = math.atan2(self.ball.vy, self.ball.vx)
-        #     y_impact = by + (x_gawang - bx) * math.tan(ball_move_dir)
+        if self.ball.vx < -10:  # If ball is moving toward left goal (x=0)
+            x_gawang = 50.0 
+            # Raycasting: predict impact y using ball's movement direction
+            ball_move_dir = math.atan2(self.ball.vy, self.ball.vx)
+            y_impact = by + (x_gawang - bx) * math.tan(ball_move_dir)
             
-        #     # Draw prediction line (Cyan)
-        #     pygame.draw.line(self.screen, (0, 255, 255), (bx, by), (x_gawang, y_impact), 1)
+            # Draw prediction line (Cyan)
+            pygame.draw.line(self.screen, (0, 255, 255), (bx, by), (x_gawang, y_impact), 1)
 
-        #     # If predicted to enter goal area (y=200-400) and close enough, intercept
-        #     if 200 < y_impact < 400 and (bx - x_gawang) < 250:
-        #         if self.robot.y < y_impact - 5:
-        #             self.robot.vy = 120.0
-        #         elif self.robot.y > y_impact + 5:
-        #             self.robot.vy = -120.0
-        #         else:
-        #             self.robot.vy = 0.0
-        #     else:
-        #         self.robot.vy = 0.0  # Stop if safe
-        # else:
-        #     self.robot.vy = 0.0
+            # If predicted to enter goal area (y=200-400) and close enough, intercept
+            if 200 < y_impact < 400 and (bx - x_gawang) < 250:
+                if self.robot.y < y_impact - 5:
+                    self.robot.vy = 120.0
+                elif self.robot.y > y_impact + 5:
+                    self.robot.vy = -120.0
+                else:
+                    self.robot.vy = 0.0
+            else:
+                self.robot.vy = 0.0  # Stop if safe
+        else:
+            self.robot.vy = 0.0
 
         # Keyboard control
         keys = pygame.key.get_pressed()
