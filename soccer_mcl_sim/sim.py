@@ -288,57 +288,67 @@ class SoccerSim(Node):
                     else:
                         dist_to_ball = math.hypot(mx - self.ball.x, my - self.ball.y)
                         if dist_to_ball < 80:
-                            self.ball.theta = math.atan2(my - self.ball.y, mx - self.ball.x)  # Optional: remove if not needed for ball behavior
+                            self.ball.theta = math.atan2(my - self.ball.y, mx - self.ball.x)  
 
                 else:
                     dist_to_ball = math.hypot(mx - self.ball.x, my - self.ball.y)
                     if dist_to_ball < 200:
-                        self.ball.theta = math.atan2(my - self.ball.y, mx - self.ball.x)  # Optional: remove if not needed for ball behavior
+                        self.ball.theta = math.atan2(my - self.ball.y, mx - self.ball.x)  
 
-        # ---- Autonomous Robot Behavior (Facing Ball and Interception) ----
-        # Calculate distance and angle to ball
+        # -------------- Autonomous Robot  ---------------------------
         dx = self.ball.x - self.robot.x
         dy = self.ball.y - self.robot.y
+
         dist_robot_ball = math.hypot(dx, dy)
         angle_to_ball = math.atan2(dy, dx)
         
-        # Check if ball is in FOV and range
+        # Autonom angle facing ball
         rel_angle = (angle_to_ball - self.robot.theta + math.pi) % (2 * math.pi) - math.pi
         if dist_robot_ball < self.vision.max_range and abs(rel_angle) < (self.vision.fov / 2):
-            # Robot automatically faces the ball
             self.robot.theta = angle_to_ball
 
-        # Prediction Raycasting (Anticipate Goal)
-        # Use EKF position if available
+        # Prediction Raycasting (Anticipate Goal) [Use EKF]
         bx = self.ekf_ball_pos[0] if self.ekf_ball_pos else self.ball.x
         by = self.ekf_ball_pos[1] if self.ekf_ball_pos else self.ball.y
         
-        if self.ball.vx < -10:  # If ball is moving toward left goal (x=0)
-            x_gawang = 50.0 
-            # Raycasting: predict impact y using ball's movement direction
-            ball_move_dir = math.atan2(self.ball.vy, self.ball.vx)
-            y_impact = by + (x_gawang - bx) * math.tan(ball_move_dir)
-            
-            # Draw prediction line (Cyan)
-            pygame.draw.line(self.screen, (0, 255, 255), (bx, by), (x_gawang, y_impact), 1)
+        # Keeper logic
+        KEEPER_X = 50.0
+        GOAL_TOP = 200.0
+        GOAL_BOTTOM = 400.0
+        MAX_SPEED = 300.0
+        Kp = 6.0
 
-            # If predicted to enter goal area (y=200-400) and close enough, intercept
-            if 200 < y_impact < 400 and (bx - x_gawang) < 250:
-                if self.robot.y < y_impact - 5:
-                    self.robot.vy = 120.0
-                elif self.robot.y > y_impact + 5:
-                    self.robot.vy = -120.0
+        bx = self.ekf_ball_pos[0] if self.ekf_ball_pos else self.ball.x
+        by = self.ekf_ball_pos[1] if self.ekf_ball_pos else self.ball.y
+
+        self.robot.vy = 0.0  
+
+        if self.ball.vx < -1.0:
+
+            t_hit = (KEEPER_X - bx) / self.ball.vx
+
+            if t_hit > 0:
+                y_impact = by + self.ball.vy * t_hit
+
+                if GOAL_TOP < y_impact < GOAL_BOTTOM:
+
+                    error = y_impact - self.robot.y
+
+                    vy_cmd = Kp * error
+                    vy_cmd = max(-MAX_SPEED, min(MAX_SPEED, vy_cmd))
+
+                    self.robot.vy = vy_cmd
                 else:
                     self.robot.vy = 0.0
             else:
-                self.robot.vy = 0.0  # Stop if safe
+                self.robot.vy = 0.0
         else:
             self.robot.vy = 0.0
 
-        # Keyboard control
+        # Keyboard robot control
         keys = pygame.key.get_pressed()
         self.robot.vx = 0.0
-        self.robot.vy = 0.0
+        # self.robot.vy = 0.0
         self.robot.omega = 0.0
 
         # if keys[pygame.K_w]:
@@ -355,6 +365,9 @@ class SoccerSim(Node):
             self.robot.omega = -2.0
 
         self.robot.update(dt)
+        self.robot.x = KEEPER_X
+        self.robot.vx = 0.0
+
 
         ODO_ALPHA_DIST = 0.05
         ODO_SIGMA_MIN = 0.5
