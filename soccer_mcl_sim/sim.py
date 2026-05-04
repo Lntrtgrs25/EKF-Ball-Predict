@@ -11,6 +11,7 @@ from .robot import Robot
 from .vision import VisionSensor
 from .ui import InputField, Button, Toggle
 from .ball import Ball   
+from .mode_keeper import KeeperMode
 
 from gyakuenki_interfaces.msg import ProjectedObjects, ProjectedObject
 from aruku_interfaces.msg import Point2
@@ -26,6 +27,12 @@ class SoccerSim(Node):
         self.padding = 0
         self.field = Field()
         self.robot = Robot()
+        self.keeper_mode = KeeperMode()
+
+        # Set initial robot position to be on the ellipse trajectory
+        self.robot.x = self.keeper_mode.goal_x + self.keeper_mode.radius_x
+        self.robot.y = self.keeper_mode.goal_y
+        self.robot.theta = 0.0
 
         self.vision = VisionSensor(
             fov_deg=78.0,
@@ -93,7 +100,7 @@ class SoccerSim(Node):
         y += 10
         self.toggle_rays = Toggle(self.panel_x, y, "Show rays", True)
         y += 30
-        self.toggle_noise = Toggle(self.panel_x, y, "Enable noise", True)
+        self.toggle_noise = Toggle(self.panel_x, y, "Enable noise", False)
         y += 50
 
         # ---- Interactive kidnap state ----
@@ -173,10 +180,18 @@ class SoccerSim(Node):
             10
         )
 
+        self.sub_ekf_vel = self.create_subscription(
+            Point2,
+            "/ball/filtered_vel",
+            self._ekf_vel_callback,
+            10
+        )
+
         # self.particles_msg = None
         self.prev_x = self.robot.x
         self.prev_y = self.robot.y
         self.ekf_ball_pos = None 
+        self.ekf_ball_vel = None
 
     # ---------------- Callback ----------------
     def _kidnap_cb(self):
@@ -208,6 +223,9 @@ class SoccerSim(Node):
 
     def _ekf_callback(self, msg):
         self.ekf_ball_pos = (msg.x, msg.y)
+
+    def _ekf_vel_callback(self, msg):
+        self.ekf_ball_vel = (msg.x, msg.y)
 
     # def _apply_tuning_cb(self):
     #     msg = Point2()
@@ -304,69 +322,31 @@ class SoccerSim(Node):
         
         # Autonom angle facing ball
         rel_angle = (angle_to_ball - self.robot.theta + math.pi) % (2 * math.pi) - math.pi
-        if dist_robot_ball < self.vision.max_range and abs(rel_angle) < (self.vision.fov / 2):
-            self.robot.theta = angle_to_ball
+        # Kondisi: Bola terdeteksi jika jarak < max_range DAN masuk jangkauan sudut FoV
+        ball_detected = (dist_robot_ball < self.vision.max_range) and (abs(rel_angle) < (self.vision.fov / 2))
 
-        # Prediction Raycasting (Anticipate Goal) [Use EKF]
-        bx = self.ekf_ball_pos[0] if self.ekf_ball_pos else self.ball.x
-        by = self.ekf_ball_pos[1] if self.ekf_ball_pos else self.ball.y
-        
-        # Keeper logic
-        KEEPER_X = 50.0
-        GOAL_TOP = 200.0
-        GOAL_BOTTOM = 400.0
-        MAX_SPEED = 300.0
-        Kp = 6.0
+        # ---------------- LOGIKA KIPER (DELEGATED TO MODE_KEEPER) ----------------
+        self.keeper_mode.update(
+            self.robot, 
+            self.ball, 
+            self.ekf_ball_pos, 
+            self.ekf_ball_vel, 
+            ball_detected, 
+            dt
+        )
 
-        bx = self.ekf_ball_pos[0] if self.ekf_ball_pos else self.ball.x
-        by = self.ekf_ball_pos[1] if self.ekf_ball_pos else self.ball.y
-
-        self.robot.vy = 0.0  
-
-        if self.ball.vx < -1.0:
-
-            t_hit = (KEEPER_X - bx) / self.ball.vx
-
-            if t_hit > 0:
-                y_impact = by + self.ball.vy * t_hit
-
-                if GOAL_TOP < y_impact < GOAL_BOTTOM:
-
-                    error = y_impact - self.robot.y
-
-                    vy_cmd = Kp * error
-                    vy_cmd = max(-MAX_SPEED, min(MAX_SPEED, vy_cmd))
-
-                    self.robot.vy = vy_cmd
-                else:
-                    self.robot.vy = 0.0
-            else:
-                self.robot.vy = 0.0
-        else:
-            self.robot.vy = 0.0
-
-        # Keyboard robot control
+        # ----- Keyboard robot control ----
         keys = pygame.key.get_pressed()
-        self.robot.vx = 0.0
-        # self.robot.vy = 0.0
         self.robot.omega = 0.0
 
-        # if keys[pygame.K_w]:
-        #     self.robot.vx = 100.0
-        # if keys[pygame.K_s]:
-        #     self.robot.vx = -100.0
-        # if keys[pygame.K_l]:
-        #     self.robot.vy = 100.0
-        # if keys[pygame.K_j]:
-        #     self.robot.vy = -100.0
         if keys[pygame.K_d]:
             self.robot.omega = 2.0
         if keys[pygame.K_a]:
             self.robot.omega = -2.0
 
         self.robot.update(dt)
-        self.robot.x = KEEPER_X
-        self.robot.vx = 0.0
+        # self.robot.x = KEEPER_X
+        # self.robot.vx = 0.0
 
 
         ODO_ALPHA_DIST = 0.05
@@ -387,8 +367,12 @@ class SoccerSim(Node):
         sigma_d = ODO_ALPHA_DIST * abs(dist) + ODO_SIGMA_MIN
 
         # Noisy odometry
-        dx_noisy = dx_true + random.gauss(0, sigma_d)
-        dy_noisy = dy_true + random.gauss(0, sigma_d)
+        if self.toggle_noise.value:
+            dx_noisy = dx_true + random.gauss(0, sigma_d)
+            dy_noisy = dy_true + random.gauss(0, sigma_d)
+        else:
+            dx_noisy = dx_true
+            dy_noisy = dy_true
 
         msg = Point2()
         msg.x = dx_noisy
@@ -403,10 +387,13 @@ class SoccerSim(Node):
 
         # ---- IMU NOISE MODEL ----
         yaw_deg_true = math.degrees(self.robot.theta)
-        yaw_noisy = (
-            yaw_deg_true +
-            random.gauss(0, IMU_SIGMA_DEG)
-        )
+        if self.toggle_noise.value:
+            yaw_noisy = (
+                yaw_deg_true +
+                random.gauss(0, IMU_SIGMA_DEG)
+            )
+        else:
+            yaw_noisy = yaw_deg_true
 
         while yaw_noisy > 180:
             yaw_noisy -= 360
@@ -431,6 +418,30 @@ class SoccerSim(Node):
             offset_x=self.padding,
             offset_y=self.padding
         )
+
+        # ---- LOGIKA KIPER (DRAW ELLIPSE TRAJECTORY & TARGETING) ----
+        km = self.keeper_mode
+        ellipse_rect = pygame.Rect(
+            int((km.goal_x - km.radius_x) * self.scale),
+            int((km.goal_y - km.radius_y) * self.scale),
+            int(2 * km.radius_x * self.scale),
+            int(2 * km.radius_y * self.scale)
+        )
+        pygame.draw.ellipse(self.screen, (200, 200, 200), ellipse_rect, 1) # Abu-abu tipis
+
+        # Garis lurus antara bola dengan gawang (gunakan logika posisi bola yang sama dengan target kiper)
+        bx_target = self.ekf_ball_pos[0] if self.ekf_ball_pos else self.ball.x
+        by_target = self.ekf_ball_pos[1] if self.ekf_ball_pos else self.ball.y
+        gx, gy = km.goal_x * self.scale, km.goal_y * self.scale
+        pygame.draw.line(self.screen, (100, 100, 255), (gx, gy), (bx_target * self.scale, by_target * self.scale), 1) # Biru muda tipis
+
+        # Titik potong (target)
+        if km.target:
+            tx, ty = km.target
+            pygame.draw.circle(self.screen, (255, 0, 0), (int(tx * self.scale), int(ty * self.scale)), 5)
+            # Label koordinat target
+            # target_txt = self.font.render(f"({tx:.1f}, {ty:.1f})", True, (255, 0, 0))
+            # self.screen.blit(target_txt, (int(tx * self.scale) + 10, int(ty * self.scale) - 10))
 
         # self.draw_particles()
 
@@ -492,8 +503,13 @@ class SoccerSim(Node):
             po_msg.projected_objects.append(o)
 
         ball_po = ProjectedObject()
-        noise_x = random.gauss(0, 5.0) 
-        noise_y = random.gauss(0, 5.0)
+        if self.toggle_noise.value:
+            noise_x = random.gauss(0, 5.0) 
+            noise_y = random.gauss(0, 5.0)
+        else:
+            noise_x = 0.0
+            noise_y = 0.0
+            
         ball_po.position.x = (self.ball.x + noise_x) * 0.01 
         ball_po.position.y = (self.ball.y + noise_y) * -0.01 
         ball_po.label = "ball"
