@@ -12,6 +12,7 @@ from .vision import VisionSensor
 from .ui import InputField, Button, Toggle
 from .ball import Ball   
 from .mode_keeper import KeeperMode
+from .locomotion import Locomotion
 
 from gyakuenki_interfaces.msg import ProjectedObjects, ProjectedObject
 from aruku_interfaces.msg import Point2
@@ -28,6 +29,11 @@ class SoccerSim(Node):
         self.field = Field()
         self.robot = Robot()
         self.keeper_mode = KeeperMode()
+        self.locomotion = Locomotion(
+            move_max_x=50.0,
+            move_max_y=90.0,
+            max_accel=80.0
+        )
 
         # Set initial robot position to be on the ellipse trajectory
         self.robot.x = self.keeper_mode.goal_x + self.keeper_mode.radius_x
@@ -37,7 +43,7 @@ class SoccerSim(Node):
         self.vision = VisionSensor(
             fov_deg=78.0,
             max_range=450.0,
-            n_rays=61,
+            n_rays=0,
             range_noise_std=3.0,
             bearing_noise_std_deg=1.0,
             range_noise_gain=0.02,
@@ -332,12 +338,13 @@ class SoccerSim(Node):
             self.ekf_ball_pos, 
             self.ekf_ball_vel, 
             ball_detected, 
-            dt
+            dt,
+            self.locomotion
         )
 
         # ----- Keyboard robot control ----
         keys = pygame.key.get_pressed()
-        self.robot.omega = 0.0
+        # self.robot.omega = 0.0
 
         if keys[pygame.K_d]:
             self.robot.omega = 2.0
@@ -518,10 +525,10 @@ class SoccerSim(Node):
         self.pub_projected.publish(po_msg)
 
         self.vision.draw_fov(self.screen, self.robot, self.scale)
-        if self.toggle_rays.value:
-            self.vision.draw_measurements(
-                self.screen, self.robot, observations, self.scale
-            )
+        # if self.toggle_rays.value:
+        #     self.vision.draw_measurements(
+        #         self.screen, self.robot, observations, self.scale
+        #     )
 
         # ---------------- UI Panel (dark, not grey) ----------------
         panel_rect = pygame.Rect(
@@ -534,7 +541,7 @@ class SoccerSim(Node):
         for b in self.buttons:
             b.draw(self.screen, self.font)
 
-        self.toggle_rays.draw(self.screen, self.font)
+        # self.toggle_rays.draw(self.screen, self.font)
         self.toggle_noise.draw(self.screen, self.font)
         self.kidnap_x_box.draw(self.screen, self.font)
         self.kidnap_y_box.draw(self.screen, self.font)
